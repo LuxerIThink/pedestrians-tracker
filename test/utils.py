@@ -1,21 +1,28 @@
-def extract_coordinates(file_path):
+
+def load_text_file(file_path: str) -> list:
     try:
         with open(file_path, 'r') as file:
-            lines = file.readlines()
+            output = file.readlines()
     except FileNotFoundError:
         raise FileNotFoundError(f'File {file_path} not found')
+    return output
 
-    coordinates = []
-    for line in lines:
+
+def extract_solution(file_path: str) -> str:
+    data = load_text_file(file_path)
+    temp_output_line = []
+    output = []
+    for line in data:
         line = line.strip()
         if line.endswith('.jpg') or line.endswith('.png'):
             continue
         elif line.isdigit():
-            if coordinates:
-                coordinates = []
+            if temp_output_line:
+                output.append(' '.join(temp_output_line))
+                temp_output_line = []
         else:
-            coordinates.append(line.split()[0])
+            temp_output_line.append(line.split()[0])
+    if temp_output_line:
+        output.append(' '.join(temp_output_line))
+    return '\n'.join(output) if output else None
 
-    if coordinates:
-        return ' '.join(coordinates)
-    return None
