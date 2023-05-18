@@ -1,21 +1,11 @@
-import sys
-import pytest
-from io import StringIO
-import test_main
-from unittest.mock import patch
-from main import get_dataset_path
+from test import utils
+import subprocess
 
 
-def test_get_dataset_path_with_argument():
-    file_path = "test_dataset"
-    with patch.object(sys, 'argv', ['', file_path]):
-        assert get_dataset_path() == file_path
+class TestMain:
 
-
-def test_get_dataset_path_without_argument(capsys):
-    with patch.object(sys, 'argv', ['']):
-        with pytest.raises(SystemExit) as exc:
-            get_dataset_path()
-        assert "Add path to dataset as first argument!" in capsys.readouterr().out
-        assert exc.type == SystemExit
-        assert exc.value.code == 1
+    def test_main(self):
+        path_to_dataset = 'test/dataset'
+        process = subprocess.run(['python', 'main.py', path_to_dataset], stdout=subprocess.PIPE)
+        correct_result = utils.extract_coordinates(f'{path_to_dataset}/bboxes_gt.txt')
+        assert process.returncode == correct_result
