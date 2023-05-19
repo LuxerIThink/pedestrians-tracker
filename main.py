@@ -1,6 +1,8 @@
 import cv2
 import sys
 
+import numpy
+
 
 class PersonTracker:
     def __init__(self, path: str, bbox_path: str = None, frames_path: str = None):
@@ -10,7 +12,7 @@ class PersonTracker:
         if bbox_path is None:
             bbox_path = path + "/bboxes.txt"
         if frames_path is None:
-            frames_path = path + "/frames"
+            frames_path = path + "/frames/"
 
         self.files_path = path
         self.bboxes_path = bbox_path
@@ -18,9 +20,10 @@ class PersonTracker:
 
     def run(self) -> dict:
         data = self.load_data()
-        return data
+        self.edit_images(data)
+        return 0
 
-    def load_data(self):
+    def load_data(self) -> dict:
         data = {}
         current_key = None
         with open(self.bboxes_path, 'r') as file:
@@ -38,6 +41,30 @@ class PersonTracker:
                     data[current_key].append(line)
                     bb_count -= 1
         return data
+
+    def edit_images(self, data: dict):
+        for image_name, bounding_boxes in data.items():
+            image = cv2.imread(self.frames_path + image_name)
+            print(bounding_boxes)
+            bbox_coords = [[int(float(x)) for x in bounding_box.split()] for bounding_box in bounding_boxes]
+            print(bbox_coords)
+            self.edit_image(image, bbox_coords)
+
+    def edit_image(self, image: numpy.ndarray, bboxes: list[list[int]]):
+        image_with_bboxes = self.draw_bboxes(image, bboxes)
+        self.show_image(image_with_bboxes)
+
+    def draw_bboxes(self, image: numpy.ndarray, bboxes: list[list[int]]):
+        output_image = image.copy()
+        for bbox in bboxes:
+            x, y, w, h = bbox
+            cv2.rectangle(output_image, (x, y), (x+w, y+h), (0, 255, 0), 2)
+        return output_image
+
+    def show_image(self, image):
+        cv2.imshow('image', image)
+        cv2.waitKey(0)
+        cv2.destroyAllWindows()
 
 
 def get_dataset_path_as_arg() -> str:
