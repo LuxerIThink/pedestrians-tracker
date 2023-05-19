@@ -45,23 +45,41 @@ class PersonTracker:
     def edit_images(self, data: dict):
         for image_name, bounding_boxes in data.items():
             image = cv2.imread(self.frames_path + image_name)
-            print(bounding_boxes)
             bbox_coords = [[int(float(x)) for x in bounding_box.split()] for bounding_box in bounding_boxes]
-            print(bbox_coords)
             self.edit_image(image, bbox_coords)
 
     def edit_image(self, image: numpy.ndarray, bboxes: list[list[int]]):
         image_with_bboxes = self.draw_bboxes(image, bboxes)
-        self.show_image(image_with_bboxes)
+        image_with_bbox_centers = self.draw_centers(image_with_bboxes, bboxes)
+        self.show_image(image_with_bbox_centers)
 
-    def draw_bboxes(self, image: numpy.ndarray, bboxes: list[list[int]]):
+    def draw_bboxes(self, image: numpy.ndarray, bboxes: list[list[int]]) -> numpy.ndarray:
         output_image = image.copy()
         for bbox in bboxes:
             x, y, w, h = bbox
             cv2.rectangle(output_image, (x, y), (x+w, y+h), (0, 255, 0), 2)
         return output_image
 
-    def show_image(self, image):
+    def draw_centers(self, image: numpy.ndarray, bboxes: list[list[int]]) -> numpy.ndarray:
+        output_image = image.copy()
+        centers = self.centers_of_the_boxes(bboxes)
+        for center in centers:
+            cv2.circle(output_image, center, 2, (0, 255, 0), -1)
+        return output_image
+
+    def centers_of_the_boxes(self, bboxes: list[list[int]]) -> list[list[int, int]]:
+        centers = []
+        for bbox in bboxes:
+            centers.append(self.center_of_bbox(bbox))
+        return centers
+
+    def center_of_bbox(self, bbox: list[int]) -> tuple[int, int]:
+        x, y, w, h = bbox
+        x_center = int(x + (w / 2))
+        y_center = int(y + (h / 2))
+        return x_center, y_center
+
+    def show_image(self, image: numpy.ndarray):
         cv2.imshow('image', image)
         cv2.waitKey(0)
         cv2.destroyAllWindows()
