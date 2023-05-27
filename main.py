@@ -1,7 +1,7 @@
 import cv2
 import sys
 
-import numpy
+import numpy as np
 
 
 class PersonTracker:
@@ -18,68 +18,81 @@ class PersonTracker:
         self.bboxes_path = bbox_path
         self.frames_path = frames_path
 
-    def run(self) -> dict:
+    def run(self) -> dict|None:
         data = self.load_data()
-        self.edit_images(data)
-        return 0
+        data_with_center = self.find_centers(data)
+        self.draw_images(data_with_center)
+        return None
 
-    def load_data(self) -> dict:
-        data = {}
-        current_key = None
+    def load_data(self) -> np.ndarray:
+        data = []
         with open(self.bboxes_path, 'r') as file:
             lines = file.readlines()
-            bb_count = 0
-            for line in lines:
-                line = line.strip()
-                if bb_count == 0:
-                    current_key = line
-                    data[current_key] = []
-                    bb_count = -1
-                elif bb_count == -1:
-                    bb_count = int(line)
-                else:
-                    data[current_key].append(line)
-                    bb_count -= 1
-        return data
+        bb_count = 0
+        row = []
+        bboxes = []
+        for line in lines:
+            line = line.strip()
+            # load image name
+            if bb_count == 0:
+                image = self.load_image(self.frames_path + line)
+                row = [line, image]
+                bboxes = []
+                bb_count = -1
+            # load number of bboxes
+            elif bb_count == -1:
+                bb_count = int(line)
+            # load bboxes
+            else:
+                # convert bbox string to list of floats
+                bbox_points = [int(float(number)) for number in line.split()]
+                bboxes.append(bbox_points)
+                if bb_count == 1:
+                    row.append(bboxes)
+                    data.append(row)
+                bb_count -= 1
+        return np.array(data, dtype=object)
 
-    def edit_images(self, data: dict):
-        for image_name, bounding_boxes in data.items():
-            image = cv2.imread(self.frames_path + image_name)
-            bbox_coords = [[int(float(x)) for x in bounding_box.split()] for bounding_box in bounding_boxes]
-            self.edit_image(image, bbox_coords)
+    def load_image(self, image_path: str) -> np.ndarray:
+        image = cv2.imread(image_path)
+        return image
 
-    def edit_image(self, image: numpy.ndarray, bboxes: list[list[int]]):
-        image_with_bboxes = self.draw_bboxes(image, bboxes)
-        image_with_bbox_centers = self.draw_centers(image_with_bboxes, bboxes)
-        self.show_image(image_with_bbox_centers)
+    def find_centers(self, data: np.ndarray) -> np.ndarray:
+        centers_column = np.empty((data.shape[0], 1), dtype=object)
+        for i, row in enumerate(data):
+            centers = []
+            for bbox in row[2]:
+                centers.append(self.find_center(bbox))
+            centers_column[i, 0] = centers
+        data_with_centers = np.hstack((data, centers_column))
+        return data_with_centers
 
-    def draw_bboxes(self, image: numpy.ndarray, bboxes: list[list[int]]) -> numpy.ndarray:
+    def find_center(self, bbox: list[int]) -> tuple[int, int]:
+        x, y, w, h = bbox
+        x_center = int(x + (w / 2))
+        y_center = int(y + (h / 2))
+        return x_center, y_center
+
+    def draw_images(self, data: np.ndarray):
+        for row in data:
+            image_with_bboxes = self.draw_bboxes(row[1], row[2])
+            image_with_centers = self.draw_centers(image_with_bboxes, row[3])
+            self.show_image(image_with_centers)
+
+    def draw_bboxes(self, image: np.ndarray, bboxes: list[list[int]]) -> np.ndarray:
         output_image = image.copy()
         for bbox in bboxes:
             x, y, w, h = bbox
             cv2.rectangle(output_image, (x, y), (x+w, y+h), (0, 255, 0), 2)
         return output_image
 
-    def draw_centers(self, image: numpy.ndarray, bboxes: list[list[int]]) -> numpy.ndarray:
+    def draw_centers(self, image: np.ndarray, centers: list[tuple[int, int]]) -> np.ndarray:
         output_image = image.copy()
-        centers = self.centers_of_the_boxes(bboxes)
         for center in centers:
             cv2.circle(output_image, center, 2, (0, 255, 0), -1)
         return output_image
 
-    def centers_of_the_boxes(self, bboxes: list[list[int]]) -> list[list[int, int]]:
-        centers = []
-        for bbox in bboxes:
-            centers.append(self.center_of_bbox(bbox))
-        return centers
-
-    def center_of_bbox(self, bbox: list[int]) -> tuple[int, int]:
-        x, y, w, h = bbox
-        x_center = int(x + (w / 2))
-        y_center = int(y + (h / 2))
-        return x_center, y_center
-
-    def show_image(self, image: numpy.ndarray):
+    def show_image(self, image: np.ndarray):
         cv2.imshow('image', image)
         cv2.waitKey(0)
         cv2.destroyAllWindows()
