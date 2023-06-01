@@ -13,7 +13,7 @@ class PersonTracker:
         if bbox_path is None:
             bbox_path = path + "/bboxes.txt"
         if frames_path is None:
-            frames_path = path + "/df/"
+            frames_path = path + "/frames/"
 
         self.files_path = path
         self.bboxes_path = bbox_path
@@ -33,7 +33,7 @@ class PersonTracker:
         bboxes = []
         for line in lines:
             line = line.strip()
-            # load image name
+            # load img name
             if bb_count == 0:
                 row = [line]
                 bboxes = []
@@ -54,67 +54,57 @@ class PersonTracker:
         df = pd.DataFrame(data, columns=['image_name', 'bounding_boxes'])
         return df
 
-    @staticmethod
-    def frames_following(df):
+    def frames_following(self, df: pd.DataFrame):
         before_frame_data = None
         for index, row in df.iterrows():
             actual_frame_data = []
             for bbox in row['bounding_boxes']:
-                one_object_data = []
                 if before_frame_data is not None:
-                    pass
-                actual_frame_data.append(one_object_data)
-            print('\n')
-            print(before_frame_data)
-            print(actual_frame_data)
+                    for before_object_data in before_frame_data:
+                        pass
             before_frame_data = actual_frame_data
-
-    def compare_frames(self, actual_frame, before_frame):
-        pass
 
     @staticmethod
     def load_image(image_path: str) -> np.ndarray:
         image = cv2.imread(image_path)
         return image
 
-    @staticmethod
-    def find_center(bbox: list[int]) -> tuple[int, int]:
+    def calculate_center(self, bbox: list[int]) -> tuple[int, int]:
         x, y, w, h = bbox
         x_center = int(x + (w / 2))
         y_center = int(y + (h / 2))
         return x_center, y_center
 
     @staticmethod
-    def calculate_distance(point1, point2):
+    def calculate_distance(point1: tuple[int, int], point2: tuple[int, int]) -> float:
         x1, y1 = point1
         x2, y2 = point2
         distance = math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
         return distance
 
-    def draw_images(self, data: np.ndarray):
-        for row in data:
-            image_with_bboxes = self.draw_bboxes(row[1], row[2])
-            image_with_centers = self.draw_centers(image_with_bboxes, row[3])
-            self.show_image(image_with_centers)
+    def draw_image(self, img: np.ndarray, bboxes: list[list[int]], centers: list[tuple[int, int]]):
+        image_with_bboxes = self.draw_bboxes(img, bboxes)
+        image_with_centers = self.draw_centers(image_with_bboxes, centers)
+        self.show_img(image_with_centers)
 
     @staticmethod
-    def draw_bboxes(image: np.ndarray, bboxes: list[list[int]]) -> np.ndarray:
-        output_image = image.copy()
+    def draw_bboxes(img: np.ndarray, bboxes: list[list[int]]) -> np.ndarray:
+        output_img = img.copy()
         for bbox in bboxes:
             x, y, w, h = bbox
-            cv2.rectangle(output_image, (x, y), (x+w, y+h), (0, 255, 0), 2)
-        return output_image
+            cv2.rectangle(output_img, (x, y), (x+w, y+h), (0, 255, 0), 2)
+        return output_img
 
     @staticmethod
-    def draw_centers(image: np.ndarray, centers: list[tuple[int, int]]) -> np.ndarray:
-        output_image = image.copy()
+    def draw_centers(img: np.ndarray, centers: list[tuple[int, int]]) -> np.ndarray:
+        output_image = img.copy()
         for center in centers:
             cv2.circle(output_image, center, 2, (0, 255, 0), -1)
         return output_image
 
     @staticmethod
-    def show_image(image: np.ndarray):
-        cv2.imshow('image', image)
+    def show_img(img: np.ndarray):
+        cv2.imshow('img', img)
         cv2.waitKey(0)
         cv2.destroyAllWindows()
 
