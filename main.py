@@ -7,17 +7,9 @@ import cv2
 
 class PersonTracker:
     def __init__(self, files_path: str, bboxes_path: str = None, images_path: str = None):
-
-        if files_path is None:
-            files_path = get_dataset_path_as_arg()
-        if bboxes_path is None:
-            bboxes_path = files_path + "/bboxes.txt"
-        if images_path is None:
-            images_path = files_path + "/frames/"
-
-        self.files_path = files_path
-        self.bboxes_path = bboxes_path
-        self.frames_path = images_path
+        self.files_path = files_path or get_dataset_path_as_arg()
+        self.bboxes_path = bboxes_path or f"{files_path}/bboxes.txt"
+        self.images_path = images_path or f"{files_path}/frames/"
 
     def run(self) -> dict | None:
         data = self.load_data()
@@ -110,7 +102,7 @@ class PersonTracker:
     def draw_centers(img: np.ndarray, centers: list[tuple[int, int]]) -> np.ndarray:
         output_img = img.copy()
         for center in centers:
-            cv2.circle(output_img, center, 2, (0, 255, 0), -1)
+            cv2.circle(output_img, center, 2, (0, 0, 255), -1)
         return output_img
 
     @staticmethod
