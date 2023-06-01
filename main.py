@@ -58,16 +58,21 @@ class PersonTracker:
         return df
 
     def frames_following(self, df):
+        image_shape = None
         before_frame_data = None
         for index, row in df.iterrows():
             actual_frame_data = []
-            image = self.load_image(self.frames_path + row['image_name'])
+            image_path = self.images_path + row['image_name']
+            image = self.load_image(image_path)
+            if image_shape is None:
+                image_shape = image.shape
             for bbox in row['bounding_boxes']:
                 actual_object_data = {}
                 actual_object_data['center'] = self.calculate_center(bbox)
                 if before_frame_data is not None:
                     for before_object_data in before_frame_data:
-                        distance = self.calculate_distance(
+                        distance_probablity = self.compute_distance_probability(
+                            image_shape,
                             actual_object_data['center'],
                             before_object_data['center'])
                 actual_frame_data.append(actual_object_data)
@@ -84,6 +89,13 @@ class PersonTracker:
         y_center = int(y + (h / 2))
         return x_center, y_center
 
+    def compute_distance_probability(self, img_shape, actual_center, before_center) -> float:
+        max_distance = self.calculate_distance((0, 0), (img_shape[1], img_shape[0]))
+        distance = self.calculate_distance(actual_center, before_center)
+        normalized_distance = distance / max_distance
+        probability = 1 - normalized_distance
+        return probability
+
     @staticmethod
     def calculate_distance(point1: tuple[int, int], point2: tuple[int, int]) -> float:
         x1, y1 = point1
@@ -91,7 +103,7 @@ class PersonTracker:
         distance = math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
         return distance
 
-    def cut_image(self, image, bbox):
+    def cut_image(self, image: np.ndarray, bbox: list[int, int, int, int]):
         x, y, w, h = bbox
         cut_image = image[y:y + h, x:x + w]
         return cut_image
