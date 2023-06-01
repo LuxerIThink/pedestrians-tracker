@@ -84,6 +84,13 @@ class PersonTracker:
         y_center = int(y + (h / 2))
         return x_center, y_center
 
+    @staticmethod
+    def calculate_distance(point1, point2):
+        x1, y1 = point1
+        x2, y2 = point2
+        distance = math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
+        return distance
+
     def draw_images(self, data: np.ndarray):
         for row in data:
             image_with_bboxes = self.draw_bboxes(row[1], row[2])
