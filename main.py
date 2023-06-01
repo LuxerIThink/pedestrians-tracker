@@ -69,12 +69,18 @@ class PersonTracker:
             for bbox in row['bounding_boxes']:
                 actual_object_data = {}
                 actual_object_data['center'] = self.calculate_center(bbox)
+                bbox_image = self.cut_image(image, bbox)
+                actual_object_data['histogram'] = self.create_histogram(bbox_image)
                 if before_frame_data is not None:
                     for before_object_data in before_frame_data:
                         distance_probablity = self.compute_distance_probability(
                             image_shape,
                             actual_object_data['center'],
                             before_object_data['center'])
+                        compare_histograms = self.compute_histogram_similarity(
+                            actual_object_data['histogram'],
+                            before_object_data['histogram'])
+                        print(compare_histograms)
                 actual_frame_data.append(actual_object_data)
             before_frame_data = actual_frame_data
 
@@ -107,6 +113,18 @@ class PersonTracker:
         x, y, w, h = bbox
         cut_image = image[y:y + h, x:x + w]
         return cut_image
+
+    def create_histogram(self, image):
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        hist = cv2.calcHist([gray], [0], None, [256], [0, 256])
+        return hist
+
+    def compute_histogram_similarity(self, hist1, hist2):
+        hist1 = hist1 / np.sum(hist1)
+        hist2 = hist2 / np.sum(hist2)
+        intersection = np.minimum(hist1, hist2)
+        similarity = np.sum(intersection)
+        return similarity
 
     def draw_image(self, img: np.ndarray, bboxes: list[list[int]], centers: list[tuple[int, int]]):
         img_with_bboxes = self.draw_bboxes(img, bboxes)
