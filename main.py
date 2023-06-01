@@ -57,14 +57,20 @@ class PersonTracker:
 
         return df
 
-    def frames_following(self, df: pd.DataFrame):
+    def frames_following(self, df):
         before_frame_data = None
         for index, row in df.iterrows():
             actual_frame_data = []
+            image = self.load_image(self.frames_path + row['image_name'])
             for bbox in row['bounding_boxes']:
+                actual_object_data = {}
+                actual_object_data['center'] = self.calculate_center(bbox)
                 if before_frame_data is not None:
                     for before_object_data in before_frame_data:
-                        pass
+                        distance = self.calculate_distance(
+                            actual_object_data['center'],
+                            before_object_data['center'])
+                actual_frame_data.append(actual_object_data)
             before_frame_data = actual_frame_data
 
     @staticmethod
