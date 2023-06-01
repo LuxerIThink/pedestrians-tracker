@@ -85,6 +85,11 @@ class PersonTracker:
         distance = math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
         return distance
 
+    def cut_image(self, image, bbox):
+        x, y, w, h = bbox
+        cut_image = image[y:y + h, x:x + w]
+        return cut_image
+
     def draw_image(self, img: np.ndarray, bboxes: list[list[int]], centers: list[tuple[int, int]]):
         img_with_bboxes = self.draw_bboxes(img, bboxes)
         img_with_centers = self.draw_centers(img_with_bboxes, centers)
