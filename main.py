@@ -6,18 +6,18 @@ import cv2
 
 
 class PersonTracker:
-    def __init__(self, path: str, bbox_path: str = None, frames_path: str = None):
+    def __init__(self, files_path: str, bboxes_path: str = None, images_path: str = None):
 
-        if path is None:
-            path = get_dataset_path_as_arg()
-        if bbox_path is None:
-            bbox_path = path + "/bboxes.txt"
-        if frames_path is None:
-            frames_path = path + "/frames/"
+        if files_path is None:
+            files_path = get_dataset_path_as_arg()
+        if bboxes_path is None:
+            bboxes_path = files_path + "/bboxes.txt"
+        if images_path is None:
+            images_path = files_path + "/frames/"
 
-        self.files_path = path
-        self.bboxes_path = bbox_path
-        self.frames_path = frames_path
+        self.files_path = files_path
+        self.bboxes_path = bboxes_path
+        self.frames_path = images_path
 
     def run(self) -> dict | None:
         data = self.load_data()
@@ -26,32 +26,43 @@ class PersonTracker:
 
     def load_data(self) -> pd.DataFrame:
         data = []
+
         with open(self.bboxes_path, 'r') as file:
             lines = file.readlines()
-        bb_count = 0
+
+        bboxes_count = 0
         row = []
         bboxes = []
+
         for line in lines:
+
             line = line.strip()
+
             # load img name
-            if bb_count == 0:
+            if bboxes_count == 0:
+                # add image_name to row
                 row = [line]
                 bboxes = []
-                bb_count = -1
+                bboxes_count = -1
+
             # load number of bboxes
-            elif bb_count == -1:
-                bb_count = int(line)
+            elif bboxes_count == -1:
+                bboxes_count = int(line)
+
             # load bboxes
             else:
                 # convert bbox string to list of floats
                 bbox_points = [int(float(number)) for number in line.split()]
                 bboxes.append(bbox_points)
-                if bb_count == 1:
+                bboxes_count -= 1
+
+                # if all bboxes loaded, append row to data
+                if bboxes_count == 0:
                     row.append(bboxes)
                     data.append(row)
-                bb_count -= 1
 
         df = pd.DataFrame(data, columns=['image_name', 'bounding_boxes'])
+
         return df
 
     def frames_following(self, df: pd.DataFrame):
@@ -65,9 +76,9 @@ class PersonTracker:
             before_frame_data = actual_frame_data
 
     @staticmethod
-    def load_image(image_path: str) -> np.ndarray:
-        image = cv2.imread(image_path)
-        return image
+    def load_image(img_path: str) -> np.ndarray:
+        img = cv2.imread(img_path)
+        return img
 
     def calculate_center(self, bbox: list[int]) -> tuple[int, int]:
         x, y, w, h = bbox
@@ -83,9 +94,9 @@ class PersonTracker:
         return distance
 
     def draw_image(self, img: np.ndarray, bboxes: list[list[int]], centers: list[tuple[int, int]]):
-        image_with_bboxes = self.draw_bboxes(img, bboxes)
-        image_with_centers = self.draw_centers(image_with_bboxes, centers)
-        self.show_img(image_with_centers)
+        img_with_bboxes = self.draw_bboxes(img, bboxes)
+        img_with_centers = self.draw_centers(img_with_bboxes, centers)
+        self.show_img(img_with_centers)
 
     @staticmethod
     def draw_bboxes(img: np.ndarray, bboxes: list[list[int]]) -> np.ndarray:
@@ -97,10 +108,10 @@ class PersonTracker:
 
     @staticmethod
     def draw_centers(img: np.ndarray, centers: list[tuple[int, int]]) -> np.ndarray:
-        output_image = img.copy()
+        output_img = img.copy()
         for center in centers:
-            cv2.circle(output_image, center, 2, (0, 255, 0), -1)
-        return output_image
+            cv2.circle(output_img, center, 2, (0, 255, 0), -1)
+        return output_img
 
     @staticmethod
     def show_img(img: np.ndarray):
@@ -111,7 +122,7 @@ class PersonTracker:
 
 def get_dataset_path_as_arg() -> str:
     if len(sys.argv) < 2:
-        print("Add path to dataset as first argument!")
+        print("Add files_path to dataset as first argument!")
         sys.exit(1)
     file_path = sys.argv[1]
     return file_path
