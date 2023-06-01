@@ -58,38 +58,44 @@ class PersonTracker:
         return df
 
     def frames_following(self, df):
+        frames_numbers = []
         image_shape = None
         before_frame_data = None
         for index, row in df.iterrows():
+            image_frames_numbers = []
             actual_frame_data = []
             image_path = self.images_path + row['image_name']
             image = self.load_image(image_path)
             if image_shape is None:
                 image_shape = image.shape
             for bbox in row['bounding_boxes']:
-                actual_object_data = {}
-                actual_object_data['center'] = self.calculate_center(bbox)
+                actual_object_data = {'center': self.calculate_center(bbox)}
                 bbox_image = self.cut_image(image, bbox)
                 actual_object_data['histogram'] = self.create_histogram(bbox_image)
                 if before_frame_data is not None:
                     for before_object_data in before_frame_data:
-                        distance_probablity = self.compute_distance_probability(
+                        distance_probability = self.compute_distance_probability(
                             image_shape,
                             actual_object_data['center'],
                             before_object_data['center'])
                         compare_histograms = self.compute_histogram_similarity(
                             actual_object_data['histogram'],
                             before_object_data['histogram'])
-                        print(compare_histograms)
+                        image_frames_numbers.append(-1)
+                else:
+                    image_frames_numbers.append(-1)
                 actual_frame_data.append(actual_object_data)
+            frames_numbers.append(image_frames_numbers)
             before_frame_data = actual_frame_data
+        print(frames_numbers)
 
     @staticmethod
     def load_image(img_path: str) -> np.ndarray:
         img = cv2.imread(img_path)
         return img
 
-    def calculate_center(self, bbox: list[int]) -> tuple[int, int]:
+    @staticmethod
+    def calculate_center(bbox: list[int]) -> tuple[int, int]:
         x, y, w, h = bbox
         x_center = int(x + (w / 2))
         y_center = int(y + (h / 2))
@@ -109,17 +115,20 @@ class PersonTracker:
         distance = math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
         return distance
 
-    def cut_image(self, image: np.ndarray, bbox: list[int, int, int, int]):
+    @staticmethod
+    def cut_image(image: np.ndarray, bbox: list[int, int, int, int]):
         x, y, w, h = bbox
         cut_image = image[y:y + h, x:x + w]
         return cut_image
 
-    def create_histogram(self, image):
+    @staticmethod
+    def create_histogram(image):
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         hist = cv2.calcHist([gray], [0], None, [256], [0, 256])
         return hist
 
-    def compute_histogram_similarity(self, hist1, hist2):
+    @staticmethod
+    def compute_histogram_similarity(hist1, hist2):
         hist1 = hist1 / np.sum(hist1)
         hist2 = hist2 / np.sum(hist2)
         intersection = np.minimum(hist1, hist2)
