@@ -17,8 +17,9 @@ class PersonTracker:
 
     def run(self) -> dict | None:
         data = self.load_data()
-        output = self.frames_following(data)
-        return output
+        frame_numbers = self.frames_following(data)
+        outputs = self.convert_list(frame_numbers)
+        return outputs
 
     def load_data(self) -> pd.DataFrame:
         data = []
@@ -70,7 +71,7 @@ class PersonTracker:
             frame_numbers, before_frame_data = output
             before_frame_numbers = frame_numbers
             frames_numbers.append(frame_numbers)
-        print(frames_numbers)
+        return frames_numbers
 
     def get_image_frames(self, row, before_frame_data, before_frame_numbers):
         image_frames_numbers = []
@@ -83,13 +84,11 @@ class PersonTracker:
             actual_object_data['histogram'] = self.create_histogram(bbox_image)
             best_probability = 0
             before_number = -1
-            print(f'bbox: {bbox}')
             if before_frame_data is not None:
                 for before_object_number, before_object_data in zip(before_frame_numbers, before_frame_data):
                     probability = self.calculate_probabilities(actual_object_data,
                                                                before_object_data,
                                                                image.shape)
-                    print(probability)
                     if probability > 0.7 and probability > best_probability:
                         best_probability = probability
                         before_number = before_object_number + 1
@@ -184,6 +183,9 @@ class PersonTracker:
         probability_same_image = query.values[1]
         return probability_same_image
 
+    def convert_list(self, nested_list):
+        return "\n".join([" ".join(map(str, sublist)) for sublist in nested_list])
+
     def draw_image(self, img: np.ndarray, bboxes: list[list[int]], centers: list[tuple[int, int]]):
         img_with_bboxes = self.draw_bboxes(img, bboxes)
         img_with_centers = self.draw_centers(img_with_bboxes, centers)
@@ -218,7 +220,14 @@ def get_dataset_path_as_arg() -> str:
     file_path = sys.argv[1]
     return file_path
 
+def save_to_file(data: dict):
+    if len(sys.argv) > 2:
+        output_file_path = sys.argv[2]
+        with open(output_file_path, 'w') as file:
+            file.write(data)
+
 
 if __name__ == '__main__':
     tracker = PersonTracker(get_dataset_path_as_arg())
-    print(tracker.run())
+    output = tracker.run()
+    save_to_file(output)
