@@ -83,14 +83,17 @@ class PersonTracker:
             actual_object_data['histogram'] = self.create_histogram(bbox_image)
             best_probability = 0
             before_number = -1
+            print(f'bbox: {bbox}')
             if before_frame_data is not None:
                 for before_object_number, before_object_data in zip(before_frame_numbers, before_frame_data):
                     probability = self.calculate_probabilities(actual_object_data,
                                                                before_object_data,
                                                                image.shape)
+                    print(probability)
                     if probability > 0.7 and probability > best_probability:
                         best_probability = probability
                         before_number = before_object_number + 1
+
             # if best_probability > 0:
             #     print(f'image: {row["name"]}, bbox: {bbox}, probability: {best_probability}')
             actual_frame_data.append(actual_object_data)
@@ -105,6 +108,8 @@ class PersonTracker:
         compare_histograms = self.compute_histogram_similarity(
             actual_object_data['histogram'],
             before_object_data['histogram'])
+        # print(f'distance_probability: {distance_probability}\n'
+        #       f'compare_histograms: {compare_histograms}')
         probability = self.calculate_similarity(distance_probability, compare_histograms)
         return probability
 
@@ -155,7 +160,10 @@ class PersonTracker:
         return similarity
 
     def calculate_similarity(self, distance_probability, histogram_probability):
-        # Create the Bayesian network
+
+        distance_probability = 0.6 * distance_probability
+        histogram_probability = 1.0 * histogram_probability
+
         model = BayesianNetwork([('Distance', 'Similarity'), ('Histogram', 'Similarity')])
 
         # Define the conditional probability distributions
@@ -165,8 +173,8 @@ class PersonTracker:
         cpd_histogram = TabularCPD(variable='Histogram', variable_card=2,
                                    values=[[1 - histogram_probability],
                                            [histogram_probability]])
-        cpd_similarity = TabularCPD(variable='Similarity', variable_card=2, values=[[1, 0.8, 0.8, 0.05],
-                                                                                    [0, 0.2, 0.2, 0.95]],
+        cpd_similarity = TabularCPD(variable='Similarity', variable_card=2, values=[[1, 0.05, 1.0, 0.2],
+                                                                                    [0, 0.95, 0.0, 0.8]],
                                     evidence=['Distance', 'Histogram'], evidence_card=[2, 2])
 
         model.add_cpds(cpd_distance, cpd_histogram, cpd_similarity)
