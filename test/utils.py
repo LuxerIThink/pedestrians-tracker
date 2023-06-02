@@ -25,4 +25,3 @@ def extract_solution(file_path: str) -> str:
     if temp_output_line:
         output.append(' '.join(temp_output_line))
     return '\n'.join(output) if output else None
-
