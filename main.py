@@ -3,6 +3,9 @@ import math
 import numpy as np
 import pandas as pd
 import cv2
+from pgmpy.models import BayesianNetwork
+from pgmpy.factors.discrete import TabularCPD
+from pgmpy.inference import VariableElimination
 
 
 class PersonTracker:
@@ -81,13 +84,13 @@ class PersonTracker:
                         compare_histograms = self.compute_histogram_similarity(
                             actual_object_data['histogram'],
                             before_object_data['histogram'])
-                        image_frames_numbers.append(-1)
+                        probability = self.calculate_similarity(distance_probability, compare_histograms)
+                        print(probability)
                 else:
                     image_frames_numbers.append(-1)
                 actual_frame_data.append(actual_object_data)
             frames_numbers.append(image_frames_numbers)
             before_frame_data = actual_frame_data
-        print(frames_numbers)
 
     @staticmethod
     def load_image(img_path: str) -> np.ndarray:
@@ -134,6 +137,29 @@ class PersonTracker:
         intersection = np.minimum(hist1, hist2)
         similarity = np.sum(intersection)
         return similarity
+
+    def calculate_similarity(self, distance_probability, histogram_probability):
+        # Create the Bayesian network
+        model = BayesianNetwork([('Distance', 'Similarity'), ('Histogram', 'Similarity')])
+
+        # Define the conditional probability distributions
+        cpd_distance = TabularCPD(variable='Distance', variable_card=2,
+                                  values=[[1 - distance_probability],
+                                          [distance_probability]])
+        cpd_histogram = TabularCPD(variable='Histogram', variable_card=2,
+                                   values=[[1 - histogram_probability],
+                                           [histogram_probability]])
+        cpd_similarity = TabularCPD(variable='Similarity', variable_card=2, values=[[1, 0.5, 0.3, 0.2],
+                                                                                    [0, 0.5, 0.7, 0.8]],
+                                    evidence=['Distance', 'Histogram'], evidence_card=[2, 2])
+
+        model.add_cpds(cpd_distance, cpd_histogram, cpd_similarity)
+
+        inference = VariableElimination(model)
+        query = inference.query(variables=['Similarity'])
+        probability_same_image = query.values[1]
+        print(probability_same_image)
+        return probability_same_image
 
     def draw_image(self, img: np.ndarray, bboxes: list[list[int]], centers: list[tuple[int, int]]):
         img_with_bboxes = self.draw_bboxes(img, bboxes)
