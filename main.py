@@ -13,11 +13,12 @@ class PersonTracker:
         self.files_path = files_path or get_dataset_path_as_arg()
         self.bboxes_path = bboxes_path or f"{files_path}/bboxes.txt"
         self.images_path = images_path or f"{files_path}/frames/"
+        self.image_shape = None
 
     def run(self) -> dict | None:
         data = self.load_data()
-        self.frames_following(data)
-        return None
+        output = self.frames_following(data)
+        return output
 
     def load_data(self) -> pd.DataFrame:
         data = []
@@ -56,41 +57,56 @@ class PersonTracker:
                     row.append(bboxes)
                     data.append(row)
 
-        df = pd.DataFrame(data, columns=['image_name', 'bounding_boxes'])
+        df = pd.DataFrame(data, columns=['name', 'bounding_boxes'])
 
         return df
 
     def frames_following(self, df):
         frames_numbers = []
-        image_shape = None
         before_frame_data = None
-        for index, row in df.iterrows():
-            image_frames_numbers = []
-            actual_frame_data = []
-            image_path = self.images_path + row['image_name']
-            image = self.load_image(image_path)
-            if image_shape is None:
-                image_shape = image.shape
-            for bbox in row['bounding_boxes']:
-                actual_object_data = {'center': self.calculate_center(bbox)}
-                bbox_image = self.cut_image(image, bbox)
-                actual_object_data['histogram'] = self.create_histogram(bbox_image)
-                if before_frame_data is not None:
-                    for before_object_data in before_frame_data:
-                        distance_probability = self.compute_distance_probability(
-                            image_shape,
-                            actual_object_data['center'],
-                            before_object_data['center'])
-                        compare_histograms = self.compute_histogram_similarity(
-                            actual_object_data['histogram'],
-                            before_object_data['histogram'])
-                        probability = self.calculate_similarity(distance_probability, compare_histograms)
-                        print(probability)
-                else:
-                    image_frames_numbers.append(-1)
-                actual_frame_data.append(actual_object_data)
-            frames_numbers.append(image_frames_numbers)
-            before_frame_data = actual_frame_data
+        before_frame_numbers = []
+        for _, row in df.iterrows():
+            output = self.get_image_frames(row, before_frame_data, before_frame_numbers)
+            frame_numbers, before_frame_data = output
+            before_frame_numbers = frame_numbers
+            frames_numbers.append(frame_numbers)
+        print(frames_numbers)
+
+    def get_image_frames(self, row, before_frame_data, before_frame_numbers):
+        image_frames_numbers = []
+        actual_frame_data = []
+        image = self.load_image(self.images_path + row['name'])
+        for bbox in row['bounding_boxes']:
+            actual_object_data = {}
+            bbox_image = self.cut_image(image, bbox)
+            actual_object_data['center'] = self.calculate_center(bbox)
+            actual_object_data['histogram'] = self.create_histogram(bbox_image)
+            best_probability = 0
+            before_number = -1
+            if before_frame_data is not None:
+                for before_object_number, before_object_data in zip(before_frame_numbers, before_frame_data):
+                    probability = self.calculate_probabilities(actual_object_data,
+                                                               before_object_data,
+                                                               image.shape)
+                    if probability > 0.7 and probability > best_probability:
+                        best_probability = probability
+                        before_number = before_object_number + 1
+            # if best_probability > 0:
+            #     print(f'image: {row["name"]}, bbox: {bbox}, probability: {best_probability}')
+            actual_frame_data.append(actual_object_data)
+            image_frames_numbers.append(before_number)
+        return image_frames_numbers, actual_frame_data
+
+    def calculate_probabilities(self, actual_object_data, before_object_data, image_size):
+        distance_probability = self.compute_distance_probability(
+            actual_object_data['center'],
+            before_object_data['center'],
+            image_size)
+        compare_histograms = self.compute_histogram_similarity(
+            actual_object_data['histogram'],
+            before_object_data['histogram'])
+        probability = self.calculate_similarity(distance_probability, compare_histograms)
+        return probability
 
     @staticmethod
     def load_image(img_path: str) -> np.ndarray:
@@ -104,7 +120,7 @@ class PersonTracker:
         y_center = int(y + (h / 2))
         return x_center, y_center
 
-    def compute_distance_probability(self, img_shape, actual_center, before_center) -> float:
+    def compute_distance_probability(self, actual_center, before_center, img_shape) -> float:
         max_distance = self.calculate_distance((0, 0), (img_shape[1], img_shape[0]))
         distance = self.calculate_distance(actual_center, before_center)
         normalized_distance = distance / max_distance
@@ -149,8 +165,8 @@ class PersonTracker:
         cpd_histogram = TabularCPD(variable='Histogram', variable_card=2,
                                    values=[[1 - histogram_probability],
                                            [histogram_probability]])
-        cpd_similarity = TabularCPD(variable='Similarity', variable_card=2, values=[[1, 0.5, 0.3, 0.2],
-                                                                                    [0, 0.5, 0.7, 0.8]],
+        cpd_similarity = TabularCPD(variable='Similarity', variable_card=2, values=[[1, 0.8, 0.8, 0.05],
+                                                                                    [0, 0.2, 0.2, 0.95]],
                                     evidence=['Distance', 'Histogram'], evidence_card=[2, 2])
 
         model.add_cpds(cpd_distance, cpd_histogram, cpd_similarity)
@@ -158,7 +174,6 @@ class PersonTracker:
         inference = VariableElimination(model)
         query = inference.query(variables=['Similarity'])
         probability_same_image = query.values[1]
-        print(probability_same_image)
         return probability_same_image
 
     def draw_image(self, img: np.ndarray, bboxes: list[list[int]], centers: list[tuple[int, int]]):
