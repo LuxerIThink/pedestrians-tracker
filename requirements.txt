@@ -3,3 +3,4 @@ pandas==2.0.2
 opencv-python==4.7.0.72
 pgmpy==0.1.22
 pytest==7.3.1
+scipy==1.10.1

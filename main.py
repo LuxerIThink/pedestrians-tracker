@@ -6,6 +6,7 @@ import cv2
 from pgmpy.models import BayesianNetwork
 from pgmpy.factors.discrete import TabularCPD
 from pgmpy.inference import VariableElimination
+from scipy.optimize import linear_sum_assignment
 
 
 class PersonTracker:
@@ -14,12 +15,18 @@ class PersonTracker:
         self.bboxes_path = bboxes_path or f"{files_path}/bboxes.txt"
         self.images_path = images_path or f"{files_path}/frames/"
         self.image_shape = None
+        self.min_prob = 0.8
 
     def run(self) -> dict | None:
         data = self.load_data()
+        self.set_image_shape(data)
         frame_numbers = self.frames_following(data)
         outputs = self.convert_list(frame_numbers)
         return outputs
+
+    def set_image_shape(self, data: pd.DataFrame):
+        image = cv2.imread(f"{self.images_path}/{data.iloc[0]['name']}")
+        self.image_shape = image.shape
 
     def load_data(self) -> pd.DataFrame:
         data = []
@@ -73,37 +80,55 @@ class PersonTracker:
             frames_numbers.append(frame_numbers)
         return frames_numbers
 
-    def get_image_frames(self, row, before_frame_data, before_frame_numbers):
-        image_frames_numbers = []
-        actual_frame_data = []
-        image = self.load_image(self.images_path + row['name'])
-        for bbox in row['bounding_boxes']:
-            actual_object_data = {}
-            bbox_image = self.cut_image(image, bbox)
-            actual_object_data['center'] = self.calculate_center(bbox)
-            actual_object_data['histogram'] = self.create_histogram(bbox_image)
-            best_probability = 0
-            before_number = -1
-            if before_frame_data is not None:
-                for before_object_number, before_object_data in zip(before_frame_numbers, before_frame_data):
-                    probability = self.calculate_probabilities(actual_object_data,
-                                                               before_object_data,
-                                                               image.shape)
-                    if probability > 0.7 and probability > best_probability:
-                        best_probability = probability
-                        before_number = before_object_number + 1
+    def get_image_frames(self, image_data, before_data, before_numbers):
+        actual_numbers = []
+        actual_data = self.gather_features(image_data)
+        probability_matrix = []
+        if before_data is not None:
+            for before_object in before_data:
+                probability_for_before_object = []
+                for actual_object in actual_data:
+                    probability = self.calc_probab(actual_object, before_object)
+                    probability_for_before_object.append(probability)
+                probability_matrix.append(probability_for_before_object)
+            probability_matrix = np.array(probability_matrix)
+            actual_numbers = self.fit_objects(before_numbers, probability_matrix)
+        else:
+            actual_numbers = np.array([-1 for _ in range(len(actual_data))])
+        print(actual_numbers)
+        return actual_numbers, actual_data
 
-            # if best_probability > 0:
-            #     print(f'image: {row["name"]}, bbox: {bbox}, probability: {best_probability}')
-            actual_frame_data.append(actual_object_data)
-            image_frames_numbers.append(before_number)
-        return image_frames_numbers, actual_frame_data
+    def fit_objects(self, before_numbers, prob_matrix):
+        prob_matrix = np.where(prob_matrix > self.min_prob, prob_matrix, 0.0)
+        num_rows, num_cols = prob_matrix.shape
+        if num_cols > num_rows:
+            prob_matrix = np.pad(prob_matrix, ((0, num_cols - num_rows), (0, 0)), mode='constant')
+        before_numbers += 1
+        num_rows_diff = prob_matrix.shape[0] - before_numbers.shape[0]
+        before_numbers = np.pad(before_numbers, (0, num_rows_diff), mode='constant', constant_values=-1)
+        _, col_ind = linear_sum_assignment(-prob_matrix)
+        before_numbers[prob_matrix[:, -1] == 0.0] = -1
+        actual_numbers = before_numbers[col_ind]
+        return actual_numbers
 
-    def calculate_probabilities(self, actual_object_data, before_object_data, image_size):
+    def gather_features(self, data: pd.DataFrame) -> list[dict]:
+        image_features = []
+        image = self.load_image(self.images_path + data['name'])
+        for bbox in data['bounding_boxes']:
+            image_features.append(self.gather_bbox_features(bbox, image))
+        return image_features
+
+    def gather_bbox_features(self, bbox: list[int, int], image: np.ndarray) -> dict:
+        bbox_features = {}
+        bbox_image = self.cut_image(image, bbox)
+        bbox_features['center'] = self.calculate_center(bbox)
+        bbox_features['histogram'] = self.create_histogram(bbox_image)
+        return bbox_features
+
+    def calc_probab(self, actual_object_data, before_object_data):
         distance_probability = self.compute_distance_probability(
             actual_object_data['center'],
-            before_object_data['center'],
-            image_size)
+            before_object_data['center'])
         compare_histograms = self.compute_histogram_similarity(
             actual_object_data['histogram'],
             before_object_data['histogram'])
@@ -124,8 +149,8 @@ class PersonTracker:
         y_center = int(y + (h / 2))
         return x_center, y_center
 
-    def compute_distance_probability(self, actual_center, before_center, img_shape) -> float:
-        max_distance = self.calculate_distance((0, 0), (img_shape[1], img_shape[0]))
+    def compute_distance_probability(self, actual_center, before_center) -> float:
+        max_distance = self.calculate_distance((0, 0), (self.image_shape[1], self.image_shape[0]))
         distance = self.calculate_distance(actual_center, before_center)
         normalized_distance = distance / max_distance
         probability = 1 - normalized_distance
@@ -160,7 +185,7 @@ class PersonTracker:
 
     def calculate_similarity(self, distance_probability, histogram_probability):
 
-        distance_probability = 0.6 * distance_probability
+        distance_probability = 0.7 * distance_probability
         histogram_probability = 1.0 * histogram_probability
 
         model = BayesianNetwork([('Distance', 'Similarity'), ('Histogram', 'Similarity')])
@@ -172,8 +197,8 @@ class PersonTracker:
         cpd_histogram = TabularCPD(variable='Histogram', variable_card=2,
                                    values=[[1 - histogram_probability],
                                            [histogram_probability]])
-        cpd_similarity = TabularCPD(variable='Similarity', variable_card=2, values=[[1, 0.05, 1.0, 0.2],
-                                                                                    [0, 0.95, 0.0, 0.8]],
+        cpd_similarity = TabularCPD(variable='Similarity', variable_card=2, values=[[1, 0.3, 0.6, 0.15],
+                                                                                    [0, 0.7, 0.4, 0.85]],
                                     evidence=['Distance', 'Histogram'], evidence_card=[2, 2])
 
         model.add_cpds(cpd_distance, cpd_histogram, cpd_similarity)
@@ -219,6 +244,7 @@ def get_dataset_path_as_arg() -> str:
         sys.exit(1)
     file_path = sys.argv[1]
     return file_path
+
 
 def save_to_file(data: dict):
     if len(sys.argv) > 2:
