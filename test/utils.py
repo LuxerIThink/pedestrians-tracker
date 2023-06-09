@@ -34,3 +34,10 @@ def extract_solution(file_path: str) -> list[list[int]]:
         output.append(temp_numbers)
 
     return output
+
+
+def save_solution(filename_path: str, data: list[list[int]]):
+    with open(filename_path, 'w') as file:
+        for sublist in data:
+            line = ' '.join(str(num) for num in sublist)
+            file.write(line + '\n')
