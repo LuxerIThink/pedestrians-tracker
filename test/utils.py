@@ -1,8 +1,8 @@
 
 def load_text_file(file_path: str) -> list:
     try:
-        with open(file_path, 'r') as file:
-            output = file.readlines()
+        with open(file_path, 'r'):
+            output = [[int(num) for num in line.split()] for line in open(file_path, 'r').read().splitlines()]
     except FileNotFoundError:
         raise FileNotFoundError(f'File {file_path} not found')
     return output
