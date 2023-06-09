@@ -8,20 +8,29 @@ def load_text_file(file_path: str) -> list:
     return output
 
 
-def extract_solution(file_path: str) -> str:
-    data = load_text_file(file_path)
-    temp_output_line = []
+def extract_solution(file_path: str) -> list[list[int]]:
+
+    with open(file_path, 'r'):
+        data = open(file_path, 'r').read().splitlines()
+
     output = []
+    temp_numbers = []
+
     for line in data:
         line = line.strip()
+
         if line.endswith('.jpg') or line.endswith('.png'):
-            continue
+            if temp_numbers:
+                output.append(temp_numbers)
+                temp_numbers = []
+
         elif line.isdigit():
-            if temp_output_line:
-                output.append(' '.join(temp_output_line))
-                temp_output_line = []
+            continue
+
         else:
-            temp_output_line.append(line.split()[0])
-    if temp_output_line:
-        output.append(' '.join(temp_output_line))
-    return '\n'.join(output) if output else None
+            temp_numbers.append(int(line.split()[0]))
+
+    if temp_numbers:
+        output.append(temp_numbers)
+
+    return output
