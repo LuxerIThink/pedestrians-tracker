@@ -3,21 +3,18 @@ import math
 import numpy as np
 import pandas as pd
 import cv2
-from pgmpy.models import BayesianNetwork
-from pgmpy.factors.discrete import TabularCPD
-from pgmpy.inference import VariableElimination
 from scipy.optimize import linear_sum_assignment
 
 
 class PersonTracker:
-    def __init__(self, files_path: str, bboxes_path: str = None, images_path: str = None):
+    def __init__(self, files_path: str = None, bboxes_path: str = None, images_path: str = None):
         self.files_path = files_path or get_dataset_path_as_arg()
         self.bboxes_path = bboxes_path or f"{files_path}/bboxes.txt"
         self.images_path = images_path or f"{files_path}/frames/"
         self.image_shape = None
-        self.min_prob = 0.8
+        self.min_prob = 0.13
 
-    def run(self) -> dict | None:
+    def run(self) -> dict | str:
         data = self.load_data()
         self.set_image_shape(data)
         frame_numbers = self.frames_following(data)
@@ -71,45 +68,69 @@ class PersonTracker:
 
     def frames_following(self, df):
         frames_numbers = []
-        before_frame_data = None
-        before_frame_numbers = []
+        frame_data = None
+        frame_numbers = []
         for _, row in df.iterrows():
-            output = self.get_image_frames(row, before_frame_data, before_frame_numbers)
-            frame_numbers, before_frame_data = output
-            before_frame_numbers = frame_numbers
-            frames_numbers.append(frame_numbers)
+            frame_numbers, frame_data = self.get_image_frames(row, frame_data, frame_numbers)
+            frames_numbers.append(list(frame_numbers))
         return frames_numbers
 
     def get_image_frames(self, image_data, before_data, before_numbers):
-        actual_numbers = []
         actual_data = self.gather_features(image_data)
         probability_matrix = []
         if before_data is not None:
             for before_object in before_data:
                 probability_for_before_object = []
                 for actual_object in actual_data:
-                    probability = self.calc_probab(actual_object, before_object)
-                    probability_for_before_object.append(probability)
+                    probability1 = self.template_matching(before_object['image'],
+                                                          actual_object['image'])
+                    probability2 = self.histogram_similarity(before_object['histogram'],
+                                                             actual_object['histogram'])
+                    probability_for_before_object.append(probability1 * probability2)
                 probability_matrix.append(probability_for_before_object)
             probability_matrix = np.array(probability_matrix)
+
             actual_numbers = self.fit_objects(before_numbers, probability_matrix)
+            print(f'actual numbers: {actual_numbers}')
         else:
             actual_numbers = np.array([-1 for _ in range(len(actual_data))])
-        print(actual_numbers)
         return actual_numbers, actual_data
 
-    def fit_objects(self, before_numbers, prob_matrix):
-        prob_matrix = np.where(prob_matrix > self.min_prob, prob_matrix, 0.0)
-        num_rows, num_cols = prob_matrix.shape
-        if num_cols > num_rows:
-            prob_matrix = np.pad(prob_matrix, ((0, num_cols - num_rows), (0, 0)), mode='constant')
-        before_numbers += 1
-        num_rows_diff = prob_matrix.shape[0] - before_numbers.shape[0]
-        before_numbers = np.pad(before_numbers, (0, num_rows_diff), mode='constant', constant_values=-1)
-        _, col_ind = linear_sum_assignment(-prob_matrix)
-        before_numbers[prob_matrix[:, -1] == 0.0] = -1
-        actual_numbers = before_numbers[col_ind]
-        return actual_numbers
+    # compare two images with Template Matching
+    @staticmethod
+    def template_matching(image1, image2):
+        # Resize the images to a consistent size for comparison
+        size = (128, 128)
+        image1 = cv2.resize(image1, size)
+        image2 = cv2.resize(image2, size)
+        # Apply template Matching
+        res = cv2.matchTemplate(image1, image2, cv2.TM_CCOEFF_NORMED)
+        min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
+        return max_val
+
+    def fit_objects(self, previous_indexes: list[int], probability_matrix: np.ndarray[float]):
+
+        # if value is lower than min_prob, set it to 0
+        probability_matrix = np.where(probability_matrix < self.min_prob, 0.0, probability_matrix)
+
+        # solve linear sum assigment for probability matrix
+        row_indexes, col_indexes = linear_sum_assignment(-probability_matrix)
+
+        # transpose probability matrix
+        probability_matrix_t = probability_matrix.T
+
+        # create output array of -1
+        actual_indexes = [-1 for _ in range(probability_matrix.shape[1])]
+
+        # create all possible numbers of indexes
+        numbers = [i for i in range(len(previous_indexes))]
+
+        # for each row index and number, if sum of row is not 0, set actual index to number
+        for col_index, number in zip(col_indexes, numbers):
+            if np.sum(probability_matrix_t[col_index]) != 0:
+                actual_indexes[col_index] = number
+
+        return actual_indexes
 
     def gather_features(self, data: pd.DataFrame) -> list[dict]:
         image_features = []
@@ -123,19 +144,9 @@ class PersonTracker:
         bbox_image = self.cut_image(image, bbox)
         bbox_features['center'] = self.calculate_center(bbox)
         bbox_features['histogram'] = self.create_histogram(bbox_image)
+        bbox_features['image'] = bbox_image
+        bbox_features['bbox'] = bbox
         return bbox_features
-
-    def calc_probab(self, actual_object_data, before_object_data):
-        distance_probability = self.compute_distance_probability(
-            actual_object_data['center'],
-            before_object_data['center'])
-        compare_histograms = self.compute_histogram_similarity(
-            actual_object_data['histogram'],
-            before_object_data['histogram'])
-        # print(f'distance_probability: {distance_probability}\n'
-        #       f'compare_histograms: {compare_histograms}')
-        probability = self.calculate_similarity(distance_probability, compare_histograms)
-        return probability
 
     @staticmethod
     def load_image(img_path: str) -> np.ndarray:
@@ -148,13 +159,6 @@ class PersonTracker:
         x_center = int(x + (w / 2))
         y_center = int(y + (h / 2))
         return x_center, y_center
-
-    def compute_distance_probability(self, actual_center, before_center) -> float:
-        max_distance = self.calculate_distance((0, 0), (self.image_shape[1], self.image_shape[0]))
-        distance = self.calculate_distance(actual_center, before_center)
-        normalized_distance = distance / max_distance
-        probability = 1 - normalized_distance
-        return probability
 
     @staticmethod
     def calculate_distance(point1: tuple[int, int], point2: tuple[int, int]) -> float:
@@ -176,45 +180,28 @@ class PersonTracker:
         return hist
 
     @staticmethod
-    def compute_histogram_similarity(hist1, hist2):
+    def histogram_similarity(hist1, hist2):
         hist1 = hist1 / np.sum(hist1)
         hist2 = hist2 / np.sum(hist2)
         intersection = np.minimum(hist1, hist2)
         similarity = np.sum(intersection)
         return similarity
 
-    def calculate_similarity(self, distance_probability, histogram_probability):
+    @staticmethod
+    def compare_bounding_boxes(box1, box2):
+        ratio1 = box1[2] / box1[3]
+        ratio2 = box2[2] / box2[3]
+        difference = abs(ratio1 - ratio2)
+        similarity = 1 - difference
+        return similarity
 
-        distance_probability = 0.7 * distance_probability
-        histogram_probability = 1.0 * histogram_probability
-
-        model = BayesianNetwork([('Distance', 'Similarity'), ('Histogram', 'Similarity')])
-
-        # Define the conditional probability distributions
-        cpd_distance = TabularCPD(variable='Distance', variable_card=2,
-                                  values=[[1 - distance_probability],
-                                          [distance_probability]])
-        cpd_histogram = TabularCPD(variable='Histogram', variable_card=2,
-                                   values=[[1 - histogram_probability],
-                                           [histogram_probability]])
-        cpd_similarity = TabularCPD(variable='Similarity', variable_card=2, values=[[1, 0.3, 0.6, 0.15],
-                                                                                    [0, 0.7, 0.4, 0.85]],
-                                    evidence=['Distance', 'Histogram'], evidence_card=[2, 2])
-
-        model.add_cpds(cpd_distance, cpd_histogram, cpd_similarity)
-
-        inference = VariableElimination(model)
-        query = inference.query(variables=['Similarity'])
-        probability_same_image = query.values[1]
-        return probability_same_image
-
-    def convert_list(self, nested_list):
+    @staticmethod
+    def convert_list(nested_list):
         return "\n".join([" ".join(map(str, sublist)) for sublist in nested_list])
 
-    def draw_image(self, img: np.ndarray, bboxes: list[list[int]], centers: list[tuple[int, int]]):
+    def draw_image(self, img: np.ndarray, bboxes: list[list[int]]):
         img_with_bboxes = self.draw_bboxes(img, bboxes)
-        img_with_centers = self.draw_centers(img_with_bboxes, centers)
-        self.show_img(img_with_centers)
+        self.show_img(img_with_bboxes)
 
     @staticmethod
     def draw_bboxes(img: np.ndarray, bboxes: list[list[int]]) -> np.ndarray:
@@ -246,7 +233,7 @@ def get_dataset_path_as_arg() -> str:
     return file_path
 
 
-def save_to_file(data: dict):
+def save_to_file(data: str):
     if len(sys.argv) > 2:
         output_file_path = sys.argv[2]
         with open(output_file_path, 'w') as file:
