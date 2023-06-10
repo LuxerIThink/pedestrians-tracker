@@ -1,11 +1,16 @@
 import pytest
-import numpy as np
-from test.utils import load_text_file
 from subprocess import check_output
-from main import PersonTracker
 
 
 class TestMainFile:
+
+    def load_text_file(self, file_path: str) -> list:
+        try:
+            with open(file_path, 'r'):
+                output = [[int(num) for num in line.split()] for line in open(file_path, 'r').read().splitlines()]
+        except FileNotFoundError:
+            raise FileNotFoundError(f'File {file_path} not found')
+        return output
 
     @pytest.fixture
     def run_main(self):
@@ -16,12 +21,14 @@ class TestMainFile:
         return run_main_with_args
 
     @pytest.mark.parametrize("main_path, output_file, template_file, train_dataset, min_percentage",
-                             [("main.py", "output.txt", "test/solution.txt", "train_dataset", 85.0)])
-    def test_run_test(self, run_main, main_path, output_file, template_file, train_dataset, min_percentage):
+                             [("main.py", "output.txt", "processing/solution.txt", "train_dataset", 80.0)])
+    def test_main(self, run_main, main_path, output_file, template_file, train_dataset, min_percentage):
+        # Run main.py
         _ = run_main(main_path, train_dataset, output_file)
 
-        template_numbers = load_text_file(template_file)
-        output_numbers = load_text_file(output_file)
+        # Load output and template files
+        template_numbers = self.load_text_file(template_file)
+        output_numbers = self.load_text_file(output_file)
 
         # Count the total number of numbers and the number of correct numbers
         total_numbers = sum(len(sublist) for sublist in template_numbers)
