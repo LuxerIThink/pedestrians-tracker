@@ -12,7 +12,7 @@ on Poznan University of Technology in Poland.*
 **Compare clippings:**
 
 There are compared with 2 methods:
-- cv2 matchTemplate to compare images
+- compare images with cv2 matchTemplate with ccoef normed method
 - comparing grey histograms
 
 which returns float values in 0-1 range. These values
