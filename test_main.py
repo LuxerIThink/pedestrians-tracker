@@ -4,7 +4,8 @@ from subprocess import check_output
 
 class TestMainFile:
 
-    def load_text_file(self, file_path: str) -> list:
+    @staticmethod
+    def load_text_file(file_path: str) -> list:
         try:
             with open(file_path, 'r'):
                 output = [[int(num) for num in line.split()] for line in open(file_path, 'r').read().splitlines()]
