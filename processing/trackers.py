@@ -84,6 +84,33 @@ class PedestriansTracker:
 
         return indexes
 
+    def create_features_per_image(self, data: pd.Series) -> list[dict]:
+        img = cv2.imread(self.images_path + data['name'])
+        img_features = []
+        for bbox in data['bboxes']:
+            img_features.append(self.create_features_per_clipping(img, bbox))
+        return img_features
+
+    def create_features_per_clipping(self, img: np.ndarray, bbox: list[int]) -> dict:
+        clipping_img = self.clip_img(img, bbox)
+        clipping_features = {
+            'histogram': self.create_histogram(clipping_img),
+            'image': clipping_img
+        }
+        return clipping_features
+
+    @staticmethod
+    def clip_img(img: np.ndarray, bbox: list[int, int, int, int]) -> np.ndarray:
+        x, y, w, h = bbox
+        clipping = img[y:y + h, x:x + w]
+        return clipping
+
+    @staticmethod
+    def create_histogram(img: np.ndarray) -> np.ndarray:
+        gray_img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        histogram = cv2.calcHist([gray_img], [0], None, [256], [0, 256])
+        return histogram
+
     def match_image_indexes(self, current_data: list[dict], previous_data: list[dict],
                             previous_indexes: np.ndarray) -> tuple[np.ndarray, list[dict]]:
         # Check is the first frame
@@ -124,6 +151,14 @@ class PedestriansTracker:
 
         return similarity
 
+    @staticmethod
+    def compare_histograms(hist1: np.ndarray, hist2: np.ndarray) -> float:
+        hist1 = hist1 / np.sum(hist1)
+        hist2 = hist2 / np.sum(hist2)
+        intersection = np.minimum(hist1, hist2)
+        similarity = float(np.sum(intersection))
+        return similarity
+
     def fit_objects(self, previous_indexes: np.ndarray, probability_matrix: np.ndarray[float]):
         """
         Fit objects from previous frame to current frame
@@ -152,38 +187,3 @@ class PedestriansTracker:
                 current_indexes[col_index] = number
 
         return current_indexes
-
-    def create_features_per_image(self, data: pd.Series) -> list[dict]:
-        img = cv2.imread(self.images_path + data['name'])
-        img_features = []
-        for bbox in data['bboxes']:
-            img_features.append(self.create_features_per_clipping(img, bbox))
-        return img_features
-
-    def create_features_per_clipping(self, img: np.ndarray, bbox: list[int]) -> dict:
-        clipping_img = self.clip_img(img, bbox)
-        clipping_features = {
-            'histogram': self.create_histogram(clipping_img),
-            'image': clipping_img
-        }
-        return clipping_features
-
-    @staticmethod
-    def clip_img(img: np.ndarray, bbox: list[int, int, int, int]) -> np.ndarray:
-        x, y, w, h = bbox
-        clipping = img[y:y + h, x:x + w]
-        return clipping
-
-    @staticmethod
-    def create_histogram(img: np.ndarray) -> np.ndarray:
-        gray_img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        histogram = cv2.calcHist([gray_img], [0], None, [256], [0, 256])
-        return histogram
-
-    @staticmethod
-    def compare_histograms(hist1: np.ndarray, hist2: np.ndarray) -> float:
-        hist1 = hist1 / np.sum(hist1)
-        hist2 = hist2 / np.sum(hist2)
-        intersection = np.minimum(hist1, hist2)
-        similarity = float(np.sum(intersection))
-        return similarity
