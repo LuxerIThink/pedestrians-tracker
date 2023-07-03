@@ -12,7 +12,7 @@ class PedestriansTracker:
         self.images_path = None
 
         # Parameters
-        self.min_probability = min_probability or 0.13
+        self.min_probability = min_probability or 0.275
 
     def tracking(self, data_folder_path: str) -> list[list[int]]:
         """
@@ -94,6 +94,7 @@ class PedestriansTracker:
     def create_features_per_clipping(self, img: np.ndarray, bbox: list[int]) -> dict:
         clipping_img = self.clip_img(img, bbox)
         clipping_features = {
+            'bbox': self.convert_bbox_to_points(bbox),
             'histogram': self.create_histogram(clipping_img),
             'image': clipping_img
         }
@@ -135,7 +136,9 @@ class PedestriansTracker:
     def clippings_similarity(self, current_clipping: dict, previous_clipping: dict) -> float:
         images_similarity = self.images_similarity(previous_clipping['image'], current_clipping['image'])
         histograms_similarity = self.compare_histograms(previous_clipping['histogram'], current_clipping['histogram'])
-        similarity = images_similarity * histograms_similarity
+        iou_similarity = self.iou_similarity(previous_clipping['bbox'], current_clipping['bbox'])
+        similarity = (images_similarity + histograms_similarity + iou_similarity)/3
+        print(similarity)
         return similarity
 
     @staticmethod
@@ -159,7 +162,41 @@ class PedestriansTracker:
         similarity = float(np.sum(intersection))
         return similarity
 
-    def fit_objects(self, previous_indexes: np.ndarray, probability_matrix: np.ndarray[float]):
+    def iou_similarity(self, bbox1: list[tuple[int, int]], bbox2: list[tuple[int, int]]) -> float:
+        intersection = self.calculate_intersection(bbox1, bbox2)
+        union = self.calculate_union(intersection, bbox1, bbox2)
+        if union != 0:
+            similarity = intersection / union
+            if similarity < 0:
+                similarity = 0
+        else:
+            similarity = 0
+        return similarity
+
+    @staticmethod
+    def convert_bbox_to_points(bbox: list[int]) -> list[tuple[int, int]]:
+        x_min, y_min, x_max, y_max = bbox
+        points = [(x_min, y_min), (x_max, y_min), (x_max, y_max), (x_min, y_max)]
+        return points
+
+    @staticmethod
+    def calculate_intersection(bbox1: list[tuple[int, int]], bbox2: list[tuple[int, int]]) -> float:
+        x_left = max(bbox1[0][0], bbox2[0][0])
+        y_top = max(bbox1[0][1], bbox2[0][1])
+        x_right = min(bbox1[2][0], bbox2[2][0])
+        y_bottom = min(bbox1[2][1], bbox2[2][1])
+
+        intersection_area = max(0, x_right - x_left) * max(0, y_bottom - y_top)
+        return intersection_area
+
+    @staticmethod
+    def calculate_union(intersection: float, bbox1: list[tuple[int, int]], bbox2: list[tuple[int, int]]) -> float:
+        area_bbox1 = (bbox1[2][0] - bbox1[0][0]) * (bbox1[2][1] - bbox1[0][1])
+        area_bbox2 = (bbox2[2][0] - bbox2[0][0]) * (bbox2[2][1] - bbox2[0][1])
+        union_area = area_bbox1 + area_bbox2 - intersection
+        return union_area
+
+    def __fit_objects(self, previous_indexes: np.ndarray, probability_matrix: np.ndarray[float]):
         """
         Fit objects from previous frame to current frame
         :param previous_indexes: m previous indexes
