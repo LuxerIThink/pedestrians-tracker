@@ -21,8 +21,8 @@ class PedestriansTracker:
         :return: list[list[int]]: indexes of frames with pedestrians
         """
         self.__set_required_paths(data_folder_path)
-        raw_data = self.load_data()
-        indexes = self.match_data_indexes(raw_data)
+        raw_data = self.__load_data()
+        indexes = self.__match_data_indexes(raw_data)
         return indexes
 
     def __set_required_paths(self, main_path: str):
@@ -30,7 +30,7 @@ class PedestriansTracker:
         self.bboxes_path = f"{main_path}/bboxes.txt"
         self.images_path = f"{main_path}/frames/"
 
-    def load_data(self) -> pd.DataFrame:
+    def __load_data(self) -> pd.DataFrame:
         with open(self.bboxes_path, 'r') as file:
             lines = file.readlines()
 
@@ -70,7 +70,7 @@ class PedestriansTracker:
 
         return df
 
-    def match_data_indexes(self, data: pd.DataFrame) -> list[list[int]]:
+    def __match_data_indexes(self, data: pd.DataFrame) -> list[list[int]]:
         # Set empty values
         previous_data = None
         previous_indexes = []
@@ -78,20 +78,20 @@ class PedestriansTracker:
 
         # Track indexes for frames, between current and previous frame
         for _, frame_data in data.iterrows():
-            actual_data = self.create_features_per_image(frame_data)
-            previous_indexes, previous_data = self.match_image_indexes(actual_data, previous_data, previous_indexes)
+            actual_data = self.__create_features_per_image(frame_data)
+            previous_indexes, previous_data = self.__match_image_indexes(actual_data, previous_data, previous_indexes)
             indexes.append(list(previous_indexes))
 
         return indexes
 
-    def create_features_per_image(self, data: pd.Series) -> list[dict]:
+    def __create_features_per_image(self, data: pd.Series) -> list[dict]:
         img = cv2.imread(self.images_path + data['name'])
         img_features = []
         for bbox in data['bboxes']:
-            img_features.append(self.create_features_per_clipping(img, bbox))
+            img_features.append(self.__create_features_per_clipping(img, bbox))
         return img_features
 
-    def create_features_per_clipping(self, img: np.ndarray, bbox: list[int]) -> dict:
+    def __create_features_per_clipping(self, img: np.ndarray, bbox: list[int]) -> dict:
         clipping_img = self.clip_img(img, bbox)
         clipping_features = {
             'bbox': self.convert_bbox_to_points(bbox),
@@ -112,28 +112,28 @@ class PedestriansTracker:
         histogram = cv2.calcHist([gray_img], [0], None, [256], [0, 256])
         return histogram
 
-    def match_image_indexes(self, current_data: list[dict], previous_data: list[dict],
-                            previous_indexes: np.ndarray) -> tuple[np.ndarray, list[dict]]:
+    def __match_image_indexes(self, current_data: list[dict], previous_data: list[dict],
+                              previous_indexes: np.ndarray) -> tuple[np.ndarray, list[dict]]:
         # Check is the first frame
         if previous_data is not None:
-            probability_matrix = self.create_probability_matrix(current_data, previous_data)
-            current_indexes = self.fit_objects(previous_indexes, probability_matrix)
+            probability_matrix = self.__create_probability_matrix(current_data, previous_data)
+            current_indexes = self.__fit_objects(previous_indexes, probability_matrix)
         else:
             current_indexes = np.full(len(current_data), -1)
 
         return current_indexes, current_data
 
-    def create_probability_matrix(self, current_data: list[dict], previous_data: list[dict]) -> np.ndarray:
+    def __create_probability_matrix(self, current_data: list[dict], previous_data: list[dict]) -> np.ndarray:
         # Create empty probability matrix
         probability_matrix = np.zeros((len(previous_data), len(current_data)))
         # Calculate probability between actual and previous clipping
         for i, previous_clipping in enumerate(previous_data):
             for j, actual_clipping in enumerate(current_data):
-                probability_matrix[i, j] = self.clippings_similarity(actual_clipping, previous_clipping)
+                probability_matrix[i, j] = self.__clippings_similarity(actual_clipping, previous_clipping)
         # Find indexes with the highest probability
         return probability_matrix
 
-    def clippings_similarity(self, current_clipping: dict, previous_clipping: dict) -> float:
+    def __clippings_similarity(self, current_clipping: dict, previous_clipping: dict) -> float:
         images_similarity = self.images_similarity(previous_clipping['image'], current_clipping['image'])
         histograms_similarity = self.compare_histograms(previous_clipping['histogram'], current_clipping['histogram'])
         iou_similarity = self.iou_similarity(previous_clipping['bbox'], current_clipping['bbox'])
